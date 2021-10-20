@@ -37,6 +37,7 @@ async def on_member_join(member):
 @client.event
 async def on_message(message):
     if message.author == client.user:
+        # please, do not talk to yourself
         return
 
     brooklyn_99_quotes = [
