@@ -1,6 +1,7 @@
 # bot.py
 # following https://realpython.com/how-to-make-a-discord-bot-python/
 import os
+from typing import Optional, Union
 
 import numpy as np
 from discord.ext.commands import Context
@@ -144,95 +145,158 @@ class jokenpo_helper:
                                f"Tesoura vence de Papel\n" \
                                f"Papel vence de Pedra\n" \
                                f"\n" \
-                               f"Se escolhermos a mesma opção, teremos um empate!\n"
+                               f"Se escolhermos a mesma opção, teremos um empate!\n" \
+                               f"\n" \
+                               f"Se você quiser saber como está o placar geral, só mandar !jokenpo placar"
 
     brief = "Escolha pedra, papel ou tesoura e vamos jogar jokenpo!"
 
-    ranking_board={"player_id":{"player":0,"bot":0}}
+    ranking_board={}
+    '''
+    dict format:
+    
+    {
+     "player1_id":{
+                    "player":0,
+                    "bot":0
+                    },
+     "player2_id":{
+                    "player":0,
+                    "bot":0
+                    },
+     "player3_id":{
+                    "player":0,
+                    "bot":0
+                   },
+     ...
+    }
+    '''
+
+    lengthiest_player_name_id = 0
+    lengthiest_score = 1
+
+    @classmethod
+    def _new_winner(cls, player_name_id:str, who_won:Optional[Union[str, None]]):
+        '''
+
+        :param player_name_id: exemplo: Grilo#1234
+        :param who_won: pode ser 'bot', ou algum player_name_id
+        :return: nada
+        '''
+        if player_name_id in cls.ranking_board.keys():
+            if not who_won:
+                return
+            elif who_won == 'bot':
+                cls.ranking_board[player_name_id]["bot"] += 1
+                cls.lengthiest_score = np.max([len("Player"),len(str(cls.ranking_board[player_name_id]["bot"])), cls.lengthiest_score])
+            else:
+                cls.ranking_board[player_name_id]["player"] += 1
+                cls.lengthiest_score = np.max([len("Player"),len(str(cls.ranking_board[player_name_id]["player"])), cls.lengthiest_score])
+
+        else:
+            cls.lengthiest_player_name_id = np.max([len(player_name_id), cls.lengthiest_player_name_id])
+            cls.lengthiest_score = np.max([len("Player"), cls.lengthiest_score])
+            cls.ranking_board[player_name_id] = {"player":0,"bot":0}
+            if not who_won:
+                return
+            elif who_won == 'bot':
+                cls.ranking_board[player_name_id]["bot"] = 1
+            else:
+                cls.ranking_board[player_name_id]["player"] = 1
 
     @classmethod
     def player_won(cls, player_name_id:str): #exemplo de player_name_id: Grilo#1234
-        if player_name_id in cls.ranking_board.keys():
-            cls.ranking_board[player_name_id]["player"] += 1
-        else:
-            cls.ranking_board[player_name_id] = {"player":0,"bot":0}
-            cls.ranking_board[player_name_id]["player"] = 1
-            cls.ranking_board[player_name_id]["bot"] = 0
+        cls._new_winner(player_name_id, player_name_id)
 
     @classmethod
     def draw(cls, player_name_id:str): #exemplo de player_name_id: Grilo#1234
-        if not player_name_id in cls.ranking_board.keys():
-            cls.ranking_board[player_name_id] = {"player":0,"bot":0}
+        cls._new_winner(player_name_id, None)
 
     @classmethod
     def player_lost(cls, player_name_id:str): #exemplo de player_name_id: Grilo#1234
-        if player_name_id in cls.ranking_board.keys():
-            cls.ranking_board[player_name_id]["bot"] += 1
-        else:
-            cls.ranking_board[player_name_id] = {"player":0,"bot":0}
-            cls.ranking_board[player_name_id]["player"] = 0
-            cls.ranking_board[player_name_id]["bot"] = 1
+        cls._new_winner(player_name_id, 'bot')
+
+    @classmethod
+    def show_ranking(cls):
+        print(cls.lengthiest_player_name_id, cls.lengthiest_score)
+        ranking_table_content = [f"{player:{cls.lengthiest_player_name_id}} {cls.ranking_board[player]['player']: >{cls.lengthiest_score}} {cls.ranking_board[player]['bot']: >{cls.lengthiest_score}}"
+                                 for player,scores in cls.ranking_board.items()]
+        ranking_table_header = f"{'': >{cls.lengthiest_player_name_id}} {'Player': >{cls.lengthiest_score}} {'Bot': >{cls.lengthiest_score}}"
+        final_table = f"{'NEW_LINE'.join([ranking_table_header, *ranking_table_content])}".replace("NEW_LINE", "\n")
+        msg = f"Olha só a pontuação de todo mundo que já jogou Jokenpô comigo:\n" \
+              f"```{final_table}```"
+        return msg
+
 
 @bot.command(name="jokenpo", help=jokenpo_helper.help_string_without_formatting, brief=jokenpo_helper.brief)
-async def jokenpo(ctx:Context, user_choice:str):
+async def jokenpo(ctx:Context, user_choice:Optional[str]):
+
     if not user_choice:
         await ctx.send(jokenpo_helper.help_string_with_formatting)
         return
 
     user_choice = user_choice.strip()
 
-    if not user_choice in jokenpo_helper.choices_parser.keys():
-        await ctx.send(jokenpo_helper.help_string_with_formatting)
-        return
-
-    player_name_id = str(ctx.author)
-
-    user_choice = jokenpo_helper.choices_parser[user_choice]
-
-    bot_choice = np.random.choice(jokenpo_helper.choices)
-
-    result = jokenpo_helper.result[user_choice][bot_choice]
-
-    if result == "venceu":
-        jokenpo_helper.player_won(player_name_id)
-        await ctx.send(f"Mas não é que você **venceu**?! :dizzy_face:\n"
-                       f"Você escolheu {user_choice} {jokenpo_helper.emoji[user_choice]}, que vence de {bot_choice} {jokenpo_helper.emoji[bot_choice]}, que foi a minha esolha!\n"
-                       f"Impressionante!\n"
-                       f"Se você quiser um repeteco, bora lá! :smiley:\n")
-    elif result == "empate":
-        jokenpo_helper.draw(player_name_id)
-        await ctx.send(f"Pensamos igual! hahaha\n"
-                       f"Você e eu escolhemos {user_choice} {jokenpo_helper.emoji[user_choice]}, então deu **empate**!\n"
-                       f"Não pode ficar empatado não!\n"
-                       f"Tá a fim de outra?! {np.random.choice(jokenpo_helper.draw_emojis)}\n")
-    elif result == "perdeu":
-        jokenpo_helper.player_lost(player_name_id)
-        await ctx.send(f"Eita! Ganhei! Você **perdeu**! HÁ! :partying_face:\n"
-                       f"Você escolheu {user_choice} {jokenpo_helper.emoji[user_choice]}, que perde de {bot_choice} {jokenpo_helper.emoji[bot_choice]}, que foi a minha esolha!\n"
-                       f"EH NÓÓÓIS!! HAHAHAH\n"
-                       f"Nem sei se quero jogar outra vez. Gosto de sair ganhando!\n"
-                       f":rofl:")
+    if user_choice in ['placar', 'pontos', 'pontos', 'pontuação', 'pontuações', 'score', 'scores', 'ranking']:
+        if not jokenpo_helper.ranking_board == {}:
+            await ctx.send(jokenpo_helper.show_ranking())
+        else:
+            await ctx.send("Não temos o placar ainda... Ninguém jogou jokenpo comigo ainda... :cry:")
     else:
-        await ctx.send(f"ERRO! QQ ACONTECEU?!\nresultado foi **{result}**")
 
-    player_score = jokenpo_helper.ranking_board[player_name_id]['player']
-    bot_score = jokenpo_helper.ranking_board[player_name_id]['bot']
+        if not user_choice in jokenpo_helper.choices_parser.keys():
+            await ctx.send(jokenpo_helper.help_string_with_formatting)
+            return
 
-    player_length = np.max([3, len(player_name_id)])
-    score_length = np.max([len(str(player_score)), len(str(bot_score))])
+        player_name_id = str(ctx.author)
 
-    await ctx.send(f"Olha o nosso placar, {player_name_id}:\n"
-                   f"```"
-                   f"{player_name_id:{player_length}}: {player_score:{score_length}} ponto{'' if player_score == 1 else 's'}\n"
-                   f"{'Bot':{player_length}}: {bot_score:{score_length}} ponto{'' if bot_score == 1 else 's'}\n"
-                   f"```")
+        user_choice = jokenpo_helper.choices_parser[user_choice]
 
-    if bot_score > player_score:
-        await ctx.send(f"Ah... vc sabe né. Eu manjo demais! :rofl::rofl:")
-    elif bot_score < player_score:
-        await ctx.send(f"Bora jogar mais umas que vc vai ver se eu não mudo esse placar, hein?!")
-    else:
-        await ctx.send(f"Vc é pário duro hein! Mas acho que consigo! :stuck_out_tongue_closed_eyes:")
+        bot_choice = np.random.choice(jokenpo_helper.choices)
+
+        result = jokenpo_helper.result[user_choice][bot_choice]
+
+        if result == "venceu":
+            jokenpo_helper.player_won(player_name_id)
+            await ctx.send(f"Mas não é que você **venceu**?! :dizzy_face:\n"
+                           f"Você escolheu {user_choice} {jokenpo_helper.emoji[user_choice]}, que vence de {bot_choice} {jokenpo_helper.emoji[bot_choice]}, que foi a minha escolha!\n"
+                           f"Impressionante!\n"
+                           f"Se você quiser um repeteco, bora lá! :smiley:\n")
+        elif result == "empate":
+            jokenpo_helper.draw(player_name_id)
+            await ctx.send(f"Pensamos igual! RA GLUGLU IEIÉ",
+                           file=discord.File("gluglu.gif"))
+            await ctx.send(f"Você e eu escolhemos {user_choice} {jokenpo_helper.emoji[user_choice]}, então deu **empate**!\n"
+                           f"Não pode ficar empatado não!\n"
+                           f"Tá a fim de outra?! {np.random.choice(jokenpo_helper.draw_emojis)}\n")
+        elif result == "perdeu":
+            jokenpo_helper.player_lost(player_name_id)
+            await ctx.send(f"Eita! Ganhei! Você **perdeu**! HÁ! :partying_face:\n"
+                           f"Você escolheu {user_choice} {jokenpo_helper.emoji[user_choice]}, que perde de {bot_choice} {jokenpo_helper.emoji[bot_choice]}, que foi a minha escolha!\n"
+                           f"EH NÓÓÓIS!! HAHAHAH\n"
+                           f"Nem sei se quero jogar outra vez. Gosto de sair ganhando!\n"
+                           f":rofl:")
+        else:
+            await ctx.send(f"ERRO! QQ ACONTECEU?!\nresultado foi **{result}**")
+
+        player_score = jokenpo_helper.ranking_board[player_name_id]['player']
+        bot_score = jokenpo_helper.ranking_board[player_name_id]['bot']
+
+        player_length = np.max([3, len(player_name_id)])
+        score_length = np.max([len(str(player_score)), len(str(bot_score))])
+
+        await ctx.send(f"Olha o nosso placar, **{player_name_id}**:\n"
+                       f"```"
+                       f"{player_name_id:{player_length}}: {player_score:{score_length}} ponto{'' if player_score == 1 else 's'}\n"
+                       f"{'Bot':{player_length}}: {bot_score:{score_length}} ponto{'' if bot_score == 1 else 's'}\n"
+                       f"```")
+
+        if bot_score > player_score:
+            await ctx.send(f"Ah... vc sabe né. Eu manjo demais! :rofl::rofl:")
+        elif bot_score < player_score:
+            await ctx.send(f"Bora jogar mais umas que vc vai ver se eu não mudo esse placar, hein?!")
+        else:
+            await ctx.send(f"Vc é pário duro hein! Mas acho que consigo! :stuck_out_tongue_closed_eyes:")
 
 
 
