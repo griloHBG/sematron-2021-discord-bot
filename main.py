@@ -1,8 +1,10 @@
 # bot.py
 # following https://realpython.com/how-to-make-a-discord-bot-python/
 import os
-from typing import Optional, Union
+from io import BytesIO
+from typing import Optional, Union, List
 
+import PIL.Image
 import numpy as np
 from discord.ext.commands import Context
 from discord.ext.commands.bot import Bot
@@ -16,6 +18,8 @@ intents.members = True
 import requests
 import json
 import datetime
+
+from PIL import Image
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -298,6 +302,127 @@ async def jokenpo(ctx:Context, user_choice:Optional[str]):
         else:
             await ctx.send(f"Vc é pário duro hein! Mas acho que consigo! :stuck_out_tongue_closed_eyes:")
 
+class velha_helper:
 
+
+    X_img:PIL.Image.Image = Image.open(r"tic-tac-toe_X.png")
+    O_img:PIL.Image.Image = Image.open(r"tic-tac-toe_O.png")
+    grid_img:PIL.Image.Image = Image.open(r"tic-tac-toe_grid.png")
+
+    current_char = 'o'
+    XO_dict = {'x':X_img,
+               'o':O_img}
+
+    @classmethod
+    def current_XO_img(cls):
+        return cls.XO_dict[cls.current_char]
+
+    positions={
+        "a":(  0,   0), "b":(160,   0), "c":(320,   0),
+        "d":(  0, 160), "e":(160, 160), "f":(320, 160),
+        "g":(  0, 320), "h":(160, 320), "i":(320, 320),
+    }
+
+    _grid = [None, None, None, None, None, None, None, None, None]
+
+    @classmethod
+    def reset_game(cls):
+        cls._grid = [None, None, None, None, None, None, None, None, None]
+        cls.grid_img = Image.open(r"tic-tac-toe_grid.png")
+        cls.current_char = 'o'
+
+    @classmethod
+    def get_grid_value(cls, position):
+        return cls._grid[cls.char2index(position)]
+
+    @staticmethod
+    def all_equal(items):
+        value = items[0]
+        return all([value==v for v in items])
+
+    @classmethod
+    def get_horizontal_values(cls, index):
+        return [cls._grid[i] for i in np.arange(index * 3, index * 3 + 3, 1)]
+
+    @classmethod
+    def get_vertical_values(cls, index):
+        return [cls._grid[i] for i in np.arange(index, index + 7, 1)]
+
+    @classmethod
+    def get_diagonal_values(cls, index):
+        return [cls._grid[i] for i in np.arange(0, 9, 4)] if index == 0 else [cls._grid[i] for i in np.arange(2, 7, 2)]
+
+    @classmethod
+    def check_winner(cls):
+        winner=None
+        #horizontais
+        if cls.all_equal(cls.get_horizontal_values(0)):
+            winner = cls._grid[0]
+        elif cls.all_equal(cls.get_horizontal_values(1)):
+            winner = cls._grid[3]
+        elif cls.all_equal(cls.get_horizontal_values(2)):
+            winner = cls._grid[6]
+        #verticais
+        elif cls.all_equal(cls.get_vertical_values(0)):
+            winner = cls._grid[0]
+        elif cls.all_equal(cls.get_vertical_values(1)):
+            winner = cls._grid[1]
+        elif cls.all_equal(cls.get_vertical_values(2)):
+            winner = cls._grid[2]
+        #diagonais
+        elif cls.all_equal(cls.get_diagonal_values(0)):
+            winner = cls._grid[0]
+        elif cls.all_equal(cls.get_diagonal_values(1)):
+            winner = cls._grid[3]
+
+        return winner
+
+    @classmethod
+    def get_free_positions(cls) -> List:
+        return [chr(i+ord('a')) for i in range(9) if not cls._grid[i]]
+
+    @classmethod
+    def set_choice(cls, choice:str):
+        choice_int:int = cls.char2index(choice)
+        cls._grid[choice_int] = cls.current_char
+        cls.grid_img.paste(cls.current_XO_img(), cls.positions[choice], cls.current_XO_img())
+        cls.toggle_char()
+
+    @staticmethod
+    def char2index(char:str) -> int:
+        return ord(char) - ord('a')
+
+    @classmethod
+    def toggle_char(cls):
+        cls.current_char = 'x' if cls.current_char=='o' else 'o'
+
+@bot.command(name="velha")
+async def jogo_da_velha(ctx:Context, user_choice:str):
+    user_choice = user_choice.lower()
+
+    if user_choice in ["começar", "comecar", "início", "inicio"]:
+        velha_helper.reset_game()
+        with BytesIO() as img:
+            velha_helper.grid_img.save(img, 'PNG')
+            img.seek(0)
+            await ctx.send("Bora começar um jogo novo então!\n"
+                           "Tá aí o tabuleiro! Qual posição você vai escolher?", file=discord.File(fp=img, filename="tic-tac-toe.png"))
+            return
+
+    if not (len(user_choice) == 1 and user_choice in "abcdefghi"):
+        await ctx.send("Utilize uma das letras a, b, c, d, e, f, g, h, i para escolher uma posição do tabuleiro")
+        return
+
+    if velha_helper.get_grid_value(user_choice):
+        await ctx.send(f"Você selecionou **{user_choice}**, mas essa posição já está ocupada com **{velha_helper.get_grid_value(user_choice)}**\n"
+                       f"Você pode selecionar as seguintes posições: {', '.join(velha_helper.get_free_positions())}")
+        return
+
+    velha_helper.set_choice(user_choice)
+
+    with BytesIO() as img:
+        velha_helper.grid_img.save(img, "PNG")
+        img.seek(0)
+        await ctx.send(f"Posição escolhida por **{str(ctx.author)}**: **{user_choice}**", file=discord.File(    fp=img, filename="tic-tac-toe.png"))
 
 bot.run(TOKEN)
